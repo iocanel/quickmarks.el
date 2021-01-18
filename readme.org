@@ -1,0 +1,15 @@
+* Quickmarks
+
+** Features
+
+   - Named bookmarks
+   - Named images (e.g. logos, memes etc)
+   - Org mode integration
+   
+** Installation
+   
+   This plugin is not currently available on any repository, so the simplest way to install is via [[https://github.com/raxod502/straight.el][straight.el]].
+
+  #+BEGIN_SRC emacs-lisp
+    (use-package quickmarks.el :straight (quickmarks.el :host github :repo "iocanel/quickmarks.el"))
+  #+END_SRC
