@@ -44,6 +44,8 @@
 ;; - avatar: QM_AVATAR (customizable)
 ;; 
 
+(require 'rx)
+
 (defcustom qm-url "QM_URL" "The property key for the quickmark url." :group 'quickmarks)
 (defcustom qm-logo "QM_LOGO" "The property key for the quickmark logo." :group 'quickmarks)
 (defcustom qm-avatar "QM_AVATAR" "The property key for the quickmark avatar." :group 'quickmarks)
@@ -79,19 +81,20 @@
                                    (org-entry-get (point) ,qm-logo))
                     :from (org-agenda-files)
                     :where `(and (regexp ,name) (tags ,qm-tag)))))
-    entries))
+    (car entries)))
+
 
 (defun qm-url-by-name (name)
   "Find a quickmark url entry by name."
-  (nth 1 (qm-entry-by-name)))
+  (nth 1 (qm-entry-by-name name)))
 
 (defun qm-logo-by-name (name)
   "Find a quickmark logo entry by name."
-  (nth 2 (qm-entry-by-name)))
+  (nth 2 (qm-entry-by-name name)))
 
 (defun qm-avatar-by-name (name)
   "Find a quickmark avatar entry by name."
-  (nth 3 (qm-entry-by-name)))
+  (nth 3 (qm-entry-by-name name)))
 
 
 (defun qm--link-to-qm (link)
@@ -101,19 +104,50 @@
          (url (concat type ":" path))
          (entry (nth 2 link))
          (description (if entry (substring-no-properties (nth 2 link)) nil)))
-    (if desc (list description (concat type path) nil nil) nil)))
+    (if description (list description url nil nil) nil)))
 
 (defun qm--collect-quickmarks-from-file (file) 
   "Collects all links from the SPECIIFED file and returns a list of quickmark entries."
+  (cond ((string-suffix-p ".org" file) (qm--collect-quickmarks-from-org-file file))
+        ((string-suffix-p ".md" file) (qm--collect-quickmarks-from-markdown-file file))
+        (:else nil)))
+
+
+(defun qm--collect-quickmarks-from-org-file (file) 
+  "Collects all links from the specified org FILE and returns a list of quickmark entries."
   (with-temp-buffer
     (insert-file file)
     (org-mode)
     (org-element-map (org-element-parse-buffer) 'link 'qm--link-to-qm)))
 
 
+(defun qm--collect-quickmarks-from-markdown-file (file) 
+  "Collects all links from the specified org FILE and returns a list of quickmark entries."
+  (with-temp-buffer
+    (insert-file file)
+    (goto-char (point-min))
+    (while (re-search-forward
+            (rx "[" (group (one-or-more (or word space))) "]" "(" (group (or "http://" "https://" (one-or-more (or alnum "." ":" "/")))) ")")
+            nil t)
+      (let ((url (match-string 1))
+            (description (match-string 2)))
+        (list description url nil nil)))))
+
 (defun qm--collect-quickmarks-from-directory (dir)
   (let ((path (file-truename dir)))
-    (mapcar 'qm--collect-quickmarks-from-file (directory-files-recursively dir "\\.org$" t))))
+    (mapcar 'qm--collect-quickmarks-from-file (directory-files-recursively dir (rx (sequence "." (or "org" "md") eol)) t))))
+
+
+(defun qm-populate-from-dir ()
+  "Populate quickmarks that are found in the directory."
+  (interactive)
+  (let* ((dir (car (find-file-read-args "Serach for quickmarks in directory:" nil)))
+         (quickmark-list (qm--collect-quickmarks-from-directory dir)))
+    (mapcar (lambda (f)
+              (when f (mapcar (lambda (q)
+                                (qm-create (capitalize (nth 0 q)) (nth 1 q) (nth 3 q) (nth 4 q))) f)))
+            quickmark-list)))
+
 
 (defun qm-create(heading url logo avatar)
   "Create a new quickmark. The quickmark will be an entry the specified HEADING.
@@ -122,13 +156,14 @@
     (with-temp-buffer
       (insert-file qm-org-capture-file)
       (goto-char (point-max))
-      (insert (concat "\n" "**" " " heading "  " ":quickmark:"))
-      (message "adding url %s" url)
-      (when url (org-entry-put (point) qm-url url))
-      (when logo (org-entry-put (point) qm-logo logo))
-      (when avatar (org-entry-put (point) qm-avatar avatar))
-      (goto-char (point-max))
-      (write-file qm-org-capture-file))))
+      (when (not (re-search-backward (rx-to-string `(: bol "**" (one-or-more space) ,heading (one-or-more space) (zero-or-more ":" word) ":quickmark:")) nil t))
+        (insert (concat "\n" "**" " " heading "  " ":quickmark:"))
+        (when url (org-entry-put (point) qm-url url))
+        (when logo (org-entry-put (point) qm-logo logo))
+        (when avatar (org-entry-put (point) qm-avatar avatar))
+        (goto-char (point-max))
+        (write-file qm-org-capture-file)))))
+
 
 ;;
 ;; Initialization & Setup
