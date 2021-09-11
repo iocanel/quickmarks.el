@@ -207,7 +207,7 @@
     (setq org-capture-templates (append org-capture-templates `((,qm-org-capture-key-chord "Quickmarks" entry (file+olp ,qm-org-capture-file "Quickmarks") (file ,template-file)))))))
 
 (defun qm-install()
-  (itneractive)
+  (interactive)
   "Install templates and snippets."
   (qm--install-snippets)
   (qm--install-template))
@@ -216,4 +216,6 @@
   (interactive)
   "Initialize quickmarks."
   (qm--register-template))
+
+(provide 'quickmarks)
 ;;; quickmarks.el ends here
