@@ -1,4 +1,4 @@
-,* %^{Name} :quickmark:
+** %^{Name} :quickmark:
 :PROPERTIES:
 :QM_URL: %^{URL}
 :QM_LOG: %^{LOGO}
