@@ -57,6 +57,7 @@
 (defcustom qm-org-capture-file "~/Documents/org/roam/quickmarks.org" "The file to use for capturing quickmarks." :group 'quickmarks)
 (defcustom qm-org-capture-key-chord "Q" "The key chord to use for capturing quickmarks." :group 'quickmarks)
 (defcustom qm-org-capture-heading "Quickmakrs" "The heading under which quickmarks will be captured." :group 'quickmarks)
+(defcustom qm-snippet-dir nil "The directory under which quickmark snippets will be installed." :group 'quickmarks)
 
 (defconst qm-org-capture-template-file-name "quickmarks.orgtmpl" "The file name of the quickmarks template.")
 
@@ -194,7 +195,9 @@
   (let* ((src (qm--find-source-dir))
          (src-snippet-dir (file-name-as-directory (concat (file-name-as-directory src) "snippets")))
          (src-org-mode-snippet-dir (file-name-as-directory (concat src-snippet-dir "org-mode")))
-         (target-snippet-dir (concat (file-name-as-directory user-emacs-directory) "snippets"))
+         (target-snippet-dir (or
+                              qm-snippet-dir
+                              (concat (file-name-as-directory user-emacs-directory) "snippets")))
          (target-org-mode-snippet-dir (file-name-as-directory (concat (file-name-as-directory target-snippet-dir) "org-mode"))))
 
     (when (not (file-exists-p target-org-mode-snippet-dir)) (make-directory target-org-mode-snippet-dir t))
