@@ -209,15 +209,17 @@
   (let ((template-file (concat qm-org-capture-template-dir qm-org-capture-template-file-name)))
     (setq org-capture-templates (append org-capture-templates `((,qm-org-capture-key-chord "Quickmarks" entry (file+olp ,qm-org-capture-file "Quickmarks") (file ,template-file)))))))
 
+;;;###autoload
 (defun qm-install()
-  (interactive)
   "Install templates and snippets."
+  (interactive)
   (qm--install-snippets)
   (qm--install-template))
 
+;;;###autoload
 (defun qm-init()
-  (interactive)
   "Initialize quickmarks."
+  (interactive)
   (qm--register-template))
 
 (provide 'quickmarks)
