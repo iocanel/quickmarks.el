@@ -69,7 +69,7 @@
                                    (org-entry-get (point) ,qm-url)
                                    (org-entry-get (point) ,qm-logo)
                                    (org-entry-get (point) ,qm-avatar))
-                    :from (org-agenda-files)
+                    :from (if (fboundp 'org-roam-list-files) (append (org-agenda-files) (org-roam-list-files)) (org-agenda-files))
                     :where `(tags ,qm-tag))))
     entries))
 
@@ -80,7 +80,7 @@
                     :select `(list (substring-no-properties (org-get-heading t t))
                                    (org-entry-get (point) ,qm-url)
                                    (org-entry-get (point) ,qm-logo))
-                    :from (org-agenda-files)
+                    :from (if (fboundp 'org-roam-list-files) (append (org-agenda-files) (org-roam-list-files)) (org-agenda-files))
                     :where `(and (regexp ,name) (tags ,qm-tag)))))
     (car entries)))
 
