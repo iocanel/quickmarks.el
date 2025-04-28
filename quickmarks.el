@@ -61,29 +61,53 @@
 
 (defconst qm-org-capture-template-file-name "quickmarks.orgtmpl" "The file name of the quickmarks template.")
 
+(defun qm-all-entries-from-roam-db ()
+  "Find all quickmarks from org-roam database."
+  (let ((entries '()))
+    (when (fboundp 'org-roam-db-query)
+      (dolist (row (org-roam-db-query
+                    "SELECT nodes.title as title, nodes.properties as properties
+                     FROM nodes
+                     LEFT JOIN files ON files.file = nodes.file
+                     WHERE nodes.\"level\"=0
+                     GROUP BY nodes.id"))
+        (let* ((title (car row))
+               (props (cadr row)))
+          (when (and props (or (member qm-tag (split-string (or (cdr (assoc "TAGS" props)) "") ":"))
+                               (assoc qm-url props)))
+            (push (list title
+                        (cdr (assoc qm-url props))
+                        (cdr (assoc qm-logo props))
+                        (cdr (assoc qm-avatar props)))
+                  entries))))
+      entries)))
+
 (defun qm-all-entries ()
   "Find all quickmarks."
   (interactive)
-  (let* ((entries (org-ql-query
-                    :select ,(list (substring-no-properties (org-get-heading t t))
-                                   (org-entry-get (point) ,qm-url)
-                                   (org-entry-get (point) ,qm-logo)
-                                   (org-entry-get (point) ,qm-avatar))
-                    :from (if (fboundp 'org-roam-list-files) (append (org-agenda-files) (org-roam-list-files)) (org-agenda-files))
-                    :where `(tags ,qm-tag))))
-    entries))
+  (let* ((source-files (append (org-agenda-files)
+                               (when (fboundp 'org-roam-list-files)
+                                 (ignore-errors (org-roam-list-files)))))
+         (files (seq-filter (lambda (f) (and (stringp f) (file-regular-p f))) source-files))
+         (entries-from-files
+          (org-ql-query
+            :select (lambda ()
+                      (list (substring-no-properties (org-get-heading t t))
+                            (org-entry-get (point) qm-url)
+                            (org-entry-get (point) qm-logo)
+                            (org-entry-get (point) qm-avatar)))
+            :from files
+            :where `(tags ,qm-tag)))
+         (entries-from-roam (qm-all-entries-from-roam-db)))
+    (append entries-from-files entries-from-roam)))
 
 (defun qm-entry-by-name (name)
-  "Find a quickmark entry by name."
-  (interactive)
-  (let* ((entries (org-ql-query
-                    :select `(list (substring-no-properties (org-get-heading t t))
-                                   (org-entry-get (point) ,qm-url)
-                                   (org-entry-get (point) ,qm-logo))
-                    :from (if (fboundp 'org-roam-list-files) (append (org-agenda-files) (org-roam-list-files)) (org-agenda-files))
-                    :where `(and (regexp ,name) (tags ,qm-tag)))))
-    (car entries)))
-
+  "Find a quickmark entry by NAME from all available quickmarks."
+  (let* ((entries (qm-all-entries))
+         (match (seq-find (lambda (entry)
+                            (string-match-p (regexp-quote name) (car entry)))
+                          entries)))
+    match))
 
 (defun qm-url-by-name (name)
   "Find a quickmark url entry by name."
@@ -97,6 +121,20 @@
   "Find a quickmark avatar entry by name."
   (nth 3 (qm-entry-by-name name)))
 
+
+(defun qm-insert-org-link ()
+  "Prompt the user to select a quickmark name and insert an org link at point.
+The link is created using the quickmark's URL and heading as the description."
+  (interactive)
+  (let* ((entries (qm-all-entries))
+         (names (mapcar #'car entries))
+         (selected (completing-read "Select quickmark: " names nil t))
+         (entry (qm-entry-by-name selected))
+         (url (and entry (nth 1 entry)))
+         (heading (or (and entry (car entry)) selected)))
+    (if (and url (not (string= url "")))
+        (insert (format "[[%s][%s]]" url heading))
+      (message "No URL found for quickmark: %s" selected))))
 
 (defun qm--link-to-qm (link)
   "Converts an org-mode LINK to a quickmark entry."
@@ -165,30 +203,47 @@
         (goto-char (point-max))
         (write-file qm-org-capture-file)))))
 
-
 ;;
 ;; Initialization & Setup
 ;;
-
 (defun qm--find-source-dir ()
-  "Find the source dir of the project."
+  "Find the source directory of the project.
+If using straight.el, it replaces the \"straight/build/quickmarks\"
+portion of the load path with \"straight/repos/quickmarks\".
+If using elpaca, it assumes the repository is located under
+`elpaca-directory/repos/quickmarks/'. If neither are found, fall back
+to the directory of the current file."
   (if qm-src-dir
       qm-src-dir
-    (progn
-      (setq qm-src-dir (replace-regexp-in-string (regexp-quote "straight/build/idee") "straight/repos/idee"
-                                                 (file-name-directory
-                                                  ;; Copied from ‘yasnippet-snippets’ that copied from ‘f-this-file’ from f.el.
-                                                  (cond (load-in-progress load-file-name) ((and (boundp 'byte-compile-current-file) byte-compile-current-file) byte-compile-current-file)
-                                                        (:else                            (buffer-file-name))))))
-      qm-src-dir)))
+    (let ((file (or load-file-name (buffer-file-name)))
+          (src-dir nil))
+      (setq src-dir
+            (cond
+             ;; Check for straight.el by testing a straight variable.
+             ((and (boundp 'straight-repository-branch) file)
+              (replace-regexp-in-string
+               (regexp-quote "straight/build/quickmarks")
+               "straight/repos/quickmarks"
+               (file-name-directory file)))
+             ;; Check for elpaca by testing for `elpaca-directory'.
+             ((and (boundp 'elpaca-directory) elpaca-directory)
+              (concat (file-name-as-directory elpaca-directory)
+                      "repos/quickmarks/"))
+             ;; Otherwise, use the current file's directory.
+             (t (file-name-directory file))))
+      src-dir)))
 
 (defun qm--install-template ()
   "Install the template to the template directory."
   (let* ((src (qm--find-source-dir))
          (src-template (concat (file-name-as-directory src) qm-org-capture-template-file-name))
-         (target-template (concat (file-name-as-directory qm-org-capture-template-dir) qm-org-capture-template-file-name)))
+         (target-template (concat (file-name-as-directory qm-org-capture-template-dir) qm-org-capture-template-file-name))
+         (fallback-template-content "** %^{Name} :quickmark:\n:PROPERTIES:\n:QM_URL: %^{URL}\n:QM_LOG: %^{LOGO}\n:END:\n%?"))
     (when (not (file-exists-p src)) (make-directory src t))
-    (copy-file src-template target-template t)))
+    (if (file-exists-p src-template)
+        (copy-file src-template target-template t)
+      (with-temp-file target-template
+          (insert fallback-template-content)))))
 
 (defun qm--install-snippets ()
   "Install the snippets to the emacs snippet directory."
